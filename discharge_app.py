@@ -41,7 +41,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-@st.cache_resource
+@st.cache_resource(ttl=3600)
 def load_discharge_data():
     """データを読み込み（キャッシュ）"""
     loader = DischargeDataLoader()
