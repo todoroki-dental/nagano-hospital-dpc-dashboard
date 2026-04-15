@@ -390,15 +390,15 @@ def render_facility_comparison(loader, config):
 
     selected_years = config["years"] if config["years"] else loader.years
 
-    # 比較する退院先カテゴリを選択（デフォルト未選択）
+    # 比較する退院先カテゴリを選択（先頭にプレースホルダーを追加）
+    _PLACEHOLDER = "比較する退院先カテゴリを選択"
     comparison_dest = st.selectbox(
         "比較する退院先カテゴリを選択",
-        config["destinations"],
-        index=None,
-        placeholder="比較する退院先カテゴリを選択"
+        [_PLACEHOLDER] + config["destinations"],
+        index=0
     )
 
-    if comparison_dest is None:
+    if comparison_dest == _PLACEHOLDER:
         st.info("退院先カテゴリを選択してください")
         return
 
