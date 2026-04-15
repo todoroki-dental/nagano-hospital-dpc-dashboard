@@ -582,6 +582,24 @@ def main():
     # ヘッダー
     st.markdown('<div class="main-header">🏥 退院先推移分析ダッシュボード</div>', unsafe_allow_html=True)
     st.markdown("長野県内医療機関の退院先データを可視化・分析")
+
+    # 入院元実績テーブル
+    st.markdown("#### 入院元実績（件）")
+    nyuin_df = pd.DataFrame(
+        {
+            "信州医療センター":    [28, 24],
+            "長野赤十字病院":      [10,  7],
+            "長野市民病院":        [ 8, 13],
+            "北信総合病院":        [12,  5],
+            "飯山赤十字病院":      [ 4,  0],
+            "林脳神経外科病院":    [ 1,  2],
+            "長野中央病院":        [ 4,  1],
+            "長野松代総合病院":    [ 1,  0],
+            "篠ノ井総合病院":      [ 1,  0],
+        },
+        index=["令和6年", "令和7年"]
+    )
+    st.dataframe(nyuin_df, use_container_width=True)
     st.markdown("---")
 
     # データ読み込み
