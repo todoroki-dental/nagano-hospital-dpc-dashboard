@@ -118,7 +118,7 @@ def render_sidebar(loader):
     st.sidebar.markdown("### 📊 退院先カテゴリ")
 
     # 「家庭への退院（当院に通院）」はデフォルトOFF
-    excluded_defaults = {"家庭への退院（当院に通院）"}
+    excluded_defaults = {"家庭への退院（当院に通院）", "家庭への退院（他院への通院）", "家庭への退院（その他）"}
     selected_destinations = []
     for dest in loader.destinations:
         default_value = dest not in excluded_defaults
