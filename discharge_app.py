@@ -45,8 +45,26 @@ st.markdown("""
 def load_discharge_data():
     """データを読み込み（キャッシュ）"""
     loader = DischargeDataLoader()
-    loader.load_data().process_data()
+    # 総患者数を先に読み込んでから処理（推定患者数の計算に使用）
+    loader.load_data().load_los_data().process_data()
     return loader
+
+
+def get_value_col(config: dict) -> str:
+    """表示モードに応じた値の列名を返す"""
+    return '推定患者数' if config["display_mode"] == "推定患者数（件）" else '割合'
+
+
+def get_tickformat(config: dict) -> str:
+    """表示モードに応じたグラフの軸フォーマットを返す"""
+    return ",.0f" if config["display_mode"] == "推定患者数（件）" else ".1%"
+
+
+def fmt_value(value, config: dict) -> str:
+    """メトリクス表示用の値フォーマット"""
+    if config["display_mode"] == "推定患者数（件）":
+        return f"{int(value):,}件" if pd.notna(value) else "-"
+    return f"{value:.1%}"
 
 
 def render_sidebar(loader):
@@ -115,6 +133,14 @@ def render_sidebar(loader):
                 if st.checkbox(dest, value=True, key=f"dest_{dest}"):
                     selected_destinations.append(dest)
 
+    # 表示モード切り替え
+    st.sidebar.markdown("---")
+    display_mode = st.sidebar.radio(
+        "📊 表示モード",
+        ["割合（%）", "推定患者数（件）"],
+        index=0
+    )
+
     return {
         "facility": selected_facility,
         "facilities": selected_facilities,
@@ -122,7 +148,8 @@ def render_sidebar(loader):
         "years": selected_years,
         "compare_year1": compare_year1,
         "compare_year2": compare_year2,
-        "destinations": selected_destinations if selected_destinations else loader.destinations
+        "destinations": selected_destinations if selected_destinations else loader.destinations,
+        "display_mode": display_mode
     }
 
 
@@ -146,6 +173,9 @@ def render_facility_analysis(loader, config):
         ]
         trend_data_list.append(facility_data)
 
+    value_col = get_value_col(config)
+    tickfmt = get_tickformat(config)
+
     if trend_data_list:
         all_data = pd.concat(trend_data_list)
 
@@ -155,7 +185,7 @@ def render_facility_analysis(loader, config):
             fig_main = px.line(
                 all_data,
                 x='年度',
-                y='割合',
+                y=value_col,
                 color='退院先',
                 markers=True,
                 title=f"{facilities[0]} - 退院先推移"
@@ -170,17 +200,17 @@ def render_facility_analysis(loader, config):
                     fig = px.line(
                         dest_data,
                         x='年度',
-                        y='割合',
+                        y=value_col,
                         color='施設名',
                         markers=True,
                         title=f"{dest} - 施設間比較推移"
                     )
-                    fig.update_yaxes(tickformat=".1%")
+                    fig.update_yaxes(tickformat=tickfmt)
                     fig.update_layout(height=400, hovermode='x unified')
                     st.plotly_chart(fig, use_container_width=True)
 
         if len(facilities) == 1:
-            fig_main.update_yaxes(tickformat=".1%")
+            fig_main.update_yaxes(tickformat=tickfmt)
             fig_main.update_layout(height=600, hovermode='x unified')
             st.plotly_chart(fig_main, use_container_width=True)
 
@@ -206,12 +236,12 @@ def render_facility_analysis(loader, config):
         col1, col2 = st.columns([1, 1])
 
         with col1:
-            # 円グラフ
+            # 円グラフ（構成比は常に割合ベース）
             fig_pie = px.pie(
                 facility_year_data,
                 values='割合',
                 names='退院先',
-                title=f"退院先内訳",
+                title="退院先内訳",
                 hole=0.4
             )
             fig_pie.update_traces(textposition='inside', textinfo='percent+label')
@@ -220,29 +250,27 @@ def render_facility_analysis(loader, config):
 
         with col2:
             # 主要指標
-            home_rate = facility_year_data[
-                facility_year_data['退院先'].str.contains('家庭への退院')
-            ]['割合'].sum()
+            home_data = facility_year_data[facility_year_data['退院先'].str.contains('家庭への退院')]
+            transfer_data = facility_year_data[facility_year_data['退院先'] == '他の病院・診療所への転院']
+            death_data = facility_year_data[facility_year_data['退院先'] == '終了（死亡等）']
 
-            transfer_rate = facility_year_data[
-                facility_year_data['退院先'] == '他の病院・診療所への転院'
-            ]['割合'].sum()
+            home_val = home_data[value_col].sum()
+            transfer_val = transfer_data[value_col].sum()
+            death_val = death_data[value_col].sum()
 
-            death_rate = facility_year_data[
-                facility_year_data['退院先'] == '終了（死亡等）'
-            ]['割合'].sum()
-
+            label = "家庭復帰" if value_col == '推定患者数' else "家庭復帰率"
             # メトリクス
             metric_col1, metric_col2 = st.columns(2)
             with metric_col1:
-                st.metric("🏠 家庭復帰率", f"{home_rate:.1%}")
-                st.metric("🏥 転院率", f"{transfer_rate:.1%}")
+                st.metric(f"🏠 {label}", fmt_value(home_val, config))
+                st.metric("🏥 転院" + ("" if value_col == '推定患者数' else "率"), fmt_value(transfer_val, config))
             with metric_col2:
-                st.metric("💔 死亡率", f"{death_rate:.1%}")
+                st.metric("💔 死亡" + ("" if value_col == '推定患者数' else "率"), fmt_value(death_val, config))
 
             # データテーブル
             st.markdown("**詳細データ**")
-            display_data = facility_year_data[['退院先', '割合']].copy()
+            display_cols = ['退院先', '割合', '推定患者数'] if '推定患者数' in facility_year_data.columns else ['退院先', '割合']
+            display_data = facility_year_data[display_cols].copy()
             display_data['割合'] = display_data['割合'].apply(lambda x: f"{x:.2%}")
             st.dataframe(display_data, use_container_width=True, hide_index=True, height=250)
 
@@ -269,32 +297,36 @@ def render_year_comparison(loader, config):
             (facility_all_data['年度'].isin(selected_years))
         ]
 
+        value_col = get_value_col(config)
+        tickfmt = get_tickformat(config)
+        color_label = "推定患者数" if value_col == '推定患者数' else "割合"
+        text_fmt = ",.0f" if value_col == '推定患者数' else ".1%"
+
         # ピボットテーブル作成
         pivot_data = facility_all_data.pivot(
             index='退院先',
             columns='年度',
-            values='割合'
+            values=value_col
         )
 
         # ヒートマップ
         fig_heatmap = px.imshow(
             pivot_data,
-            labels=dict(x="年度", y="退院先", color="割合"),
+            labels=dict(x="年度", y="退院先", color=color_label),
             x=pivot_data.columns,
             y=pivot_data.index,
             color_continuous_scale="Blues",
             aspect="auto",
-            text_auto=".1%"
+            text_auto=text_fmt
         )
         fig_heatmap.update_layout(height=500)
         fig_heatmap.update_xaxes(side="top")
         st.plotly_chart(fig_heatmap, use_container_width=True)
 
-        # 年度間変化テーブル
+        # 年度間変化テーブル（割合ベースで表示）
         if len(selected_years) >= 2:
             st.markdown(f"**年度間変化（{selected_years[0]} → {selected_years[-1]}）**")
 
-            # 最初と最後の年度で比較
             year_start = selected_years[0]
             year_end = selected_years[-1]
 
@@ -406,18 +438,23 @@ def render_facility_comparison(loader, config):
         ]
         trend_data_list.append(facility_trend)
 
+    value_col = get_value_col(config)
+    tickfmt = get_tickformat(config)
+    color_label = "推定患者数" if value_col == '推定患者数' else "割合"
+    text_fmt = ",.0f" if value_col == '推定患者数' else ".1%"
+
     if trend_data_list:
         trend_data = pd.concat(trend_data_list)
 
         fig_trend = px.line(
             trend_data,
             x='年度',
-            y='割合',
+            y=value_col,
             color='施設名',
             markers=True,
             title=f"{comparison_dest} - 全年度推移比較"
         )
-        fig_trend.update_yaxes(tickformat=".1%")
+        fig_trend.update_yaxes(tickformat=tickfmt)
         fig_trend.update_layout(height=600, hovermode='x unified')
         st.plotly_chart(fig_trend, use_container_width=True)
 
@@ -425,7 +462,6 @@ def render_facility_comparison(loader, config):
     st.markdown("---")
     st.markdown("#### 📊 年度別施設間比較")
 
-    # 年度を選択
     detail_year = st.selectbox(
         "詳細表示する年度を選択",
         selected_years,
@@ -433,45 +469,51 @@ def render_facility_comparison(loader, config):
         key="facility_comparison_detail_year"
     )
 
-    # データ取得
     comparison_data = loader.get_facility_comparison(
         selected_facilities,
         comparison_dest,
         detail_year
     )
 
-    # 平均値を計算
-    mean_value = comparison_data['割合'].mean()
+    mean_value = comparison_data[value_col].mean()
 
     # 横並び棒グラフ
     fig_bar = go.Figure()
 
+    if value_col == '推定患者数':
+        bar_text = comparison_data[value_col].apply(lambda x: f"{int(x):,}件" if pd.notna(x) else "-")
+        mean_label = f"平均: {int(mean_value):,}件"
+        y_title = "推定患者数（件）"
+    else:
+        bar_text = comparison_data[value_col].apply(lambda x: f"{x:.1%}")
+        mean_label = f"平均: {mean_value:.1%}"
+        y_title = "割合"
+
     fig_bar.add_trace(go.Bar(
         x=comparison_data['施設名'],
-        y=comparison_data['割合'],
+        y=comparison_data[value_col],
         name=comparison_dest,
-        text=comparison_data['割合'].apply(lambda x: f"{x:.1%}"),
+        text=bar_text,
         textposition='outside',
         marker_color='lightblue'
     ))
 
-    # 平均線を追加
     fig_bar.add_hline(
         y=mean_value,
         line_dash="dash",
         line_color="red",
-        annotation_text=f"平均: {mean_value:.1%}",
+        annotation_text=mean_label,
         annotation_position="right"
     )
 
     fig_bar.update_layout(
         title=f"{comparison_dest} - 施設間比較（{detail_year}）",
         xaxis_title="施設名",
-        yaxis_title="割合",
+        yaxis_title=y_title,
         height=600,
         showlegend=False
     )
-    fig_bar.update_yaxes(tickformat=".1%")
+    fig_bar.update_yaxes(tickformat=tickfmt)
     fig_bar.update_xaxes(tickangle=-45)
 
     st.plotly_chart(fig_bar, use_container_width=True)
@@ -480,7 +522,6 @@ def render_facility_comparison(loader, config):
     st.markdown("---")
     st.markdown("#### 🔥 施設×年度ヒートマップ")
 
-    # 選択施設と年度でデータを取得
     heatmap_data_list = []
     for facility in selected_facilities:
         facility_data = loader.get_facility_data(facility)
@@ -493,22 +534,20 @@ def render_facility_comparison(loader, config):
     if heatmap_data_list:
         heatmap_data = pd.concat(heatmap_data_list)
 
-        # ピボットテーブル作成
         pivot_heatmap = heatmap_data.pivot(
             index='施設名',
             columns='年度',
-            values='割合'
+            values=value_col
         )
 
-        # ヒートマップ
         fig_heatmap = px.imshow(
             pivot_heatmap,
-            labels=dict(x="年度", y="施設名", color="割合"),
+            labels=dict(x="年度", y="施設名", color=color_label),
             x=pivot_heatmap.columns,
             y=pivot_heatmap.index,
             color_continuous_scale="Blues",
             aspect="auto",
-            text_auto=".1%"
+            text_auto=text_fmt
         )
         fig_heatmap.update_layout(height=max(400, len(selected_facilities) * 40))
         fig_heatmap.update_xaxes(side="top")
@@ -559,16 +598,22 @@ def render_data_table(loader, config):
 
     st.markdown(f"#### 表示件数: {len(display_data)} 件")
 
-    # データテーブル表示
+    # 推定患者数列があれば表示列に追加
+    show_cols = ['施設名', '年度', '退院先', '割合_表示']
+    csv_cols = ['告示番号', '通番', '施設名', '年度', '退院先', '割合']
+    if '推定患者数' in display_data.columns:
+        show_cols.append('推定患者数')
+        csv_cols.append('推定患者数')
+
     st.dataframe(
-        display_data[['施設名', '年度', '退院先', '割合_表示']],
+        display_data[show_cols],
         use_container_width=True,
         height=600,
         hide_index=True
     )
 
     # CSVダウンロード
-    csv = display_data[['告示番号', '通番', '施設名', '年度', '退院先', '割合']].to_csv(index=False).encode('utf-8-sig')
+    csv = display_data[csv_cols].to_csv(index=False).encode('utf-8-sig')
     st.download_button(
         label="📥 CSVダウンロード",
         data=csv,
@@ -584,7 +629,7 @@ def main():
     st.markdown("長野県内医療機関の退院先データを可視化・分析")
 
     # 入院元実績テーブル
-    st.markdown("#### 入院元実績（件）")
+    st.markdown("#### 当院への入院元実績（件）")
     nyuin_df = pd.DataFrame(
         {
             "信州医療センター":    [28, 24],

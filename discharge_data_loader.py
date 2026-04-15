@@ -18,6 +18,7 @@ class DischargeDataLoader:
         self.facilities = None
         self.years = None
         self.destinations = None
+        self.los_data = None  # 年度別総患者数（在院日数ファイルから取得）
 
     def load_data(self):
         """Excelファイルからデータを読み込む"""
@@ -70,6 +71,44 @@ class DischargeDataLoader:
                     })
 
         self.processed_data = pd.DataFrame(records)
+
+        # 総患者数が読み込み済みであれば推定患者数を計算してマージ
+        if self.los_data is not None:
+            self.processed_data = self.processed_data.merge(
+                self.los_data[['施設名', '年度', '総患者数']],
+                on=['施設名', '年度'],
+                how='left'
+            )
+            self.processed_data['推定患者数'] = (
+                self.processed_data['割合'] * self.processed_data['総患者数']
+            ).round(0).astype('Int64')
+
+        return self
+
+    def load_los_data(self, los_path: str = "data/length_of_stay.xlsx"):
+        """在院日数ファイルから年度別総患者数を読み込む"""
+        script_dir = Path(__file__).parent
+        los_raw = pd.read_excel(
+            script_dir / los_path,
+            sheet_name='在院日数の状況',
+            header=[0, 1]
+        )
+
+        records = []
+        for _, row in los_raw.iterrows():
+            facility = row[('施設名', 'Unnamed: 2_level_1')]
+            if pd.isna(facility):
+                continue
+            for yr in ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']:
+                count = row[(yr, '件数')]
+                if pd.notna(count):
+                    records.append({
+                        '施設名': facility,
+                        '年度': yr.upper(),  # r1 → R1 に正規化
+                        '総患者数': int(count)
+                    })
+
+        self.los_data = pd.DataFrame(records)
         return self
 
     def get_facility_list(self):
