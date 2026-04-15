@@ -72,12 +72,23 @@ def render_sidebar(loader):
     st.sidebar.title("🏥 退院先分析")
     st.sidebar.markdown("---")
 
-    # 施設選択（複数選択に変更）
+    # 表示モード切り替え（タイトル直下）
+    display_mode = st.sidebar.radio(
+        "📊 表示モード",
+        ["割合（%）", "推定患者数（件）"],
+        index=1  # デフォルト：推定患者数
+    )
+
+    st.sidebar.markdown("---")
+
+    # 施設選択：デフォルトで4施設を選択
     facilities = loader.get_facility_list()
+    default_keywords = ["信州医療センター", "長野赤十字病院", "長野市民病院", "北信総合病院"]
+    default_facilities = [f for f in facilities if any(kw in f for kw in default_keywords)]
     selected_facilities = st.sidebar.multiselect(
         "📍 施設選択（複数可）",
         facilities,
-        default=[facilities[0]]
+        default=default_facilities
     )
 
     # 後方互換性のため、単一施設も保持
@@ -102,44 +113,17 @@ def render_sidebar(loader):
     with col2:
         compare_year2 = st.selectbox("年度2", years, index=len(years) - 1)
 
-    # 退院先カテゴリ選択
+    # 退院先カテゴリ選択（フラットリスト）
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📊 退院先カテゴリ")
 
-    # カテゴリグループ化
-    destination_groups = {
-        "家庭への退院": [
-            "家庭への退院（当院に通院）",
-            "家庭への退院（他院への通院）",
-            "家庭への退院（その他）"
-        ],
-        "施設入所": [
-            "介護老人保健施設に入所",
-            "介護老人福祉施設に入所",
-            "社会福祉施設、有料老人ホーム等に入所",
-            "介護医療院"
-        ],
-        "その他": [
-            "他の病院・診療所への転院",
-            "終了（死亡等）",
-            "その他"
-        ]
-    }
-
+    # 「家庭への退院（当院に通院）」はデフォルトOFF
+    excluded_defaults = {"家庭への退院（当院に通院）"}
     selected_destinations = []
-    for group, dests in destination_groups.items():
-        with st.sidebar.expander(group, expanded=True):
-            for dest in dests:
-                if st.checkbox(dest, value=True, key=f"dest_{dest}"):
-                    selected_destinations.append(dest)
-
-    # 表示モード切り替え
-    st.sidebar.markdown("---")
-    display_mode = st.sidebar.radio(
-        "📊 表示モード",
-        ["割合（%）", "推定患者数（件）"],
-        index=0
-    )
+    for dest in loader.destinations:
+        default_value = dest not in excluded_defaults
+        if st.sidebar.checkbox(dest, value=default_value, key=f"dest_{dest}"):
+            selected_destinations.append(dest)
 
     return {
         "facility": selected_facility,
