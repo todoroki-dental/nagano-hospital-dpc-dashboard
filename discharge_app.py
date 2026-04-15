@@ -390,20 +390,28 @@ def render_facility_comparison(loader, config):
 
     selected_years = config["years"] if config["years"] else loader.years
 
-    # 比較する退院先カテゴリを選択
+    # 比較する退院先カテゴリを選択（デフォルト未選択）
     comparison_dest = st.selectbox(
         "比較する退院先カテゴリを選択",
-        config["destinations"]
+        config["destinations"],
+        index=None,
+        placeholder="比較する退院先カテゴリを選択"
     )
+
+    if comparison_dest is None:
+        st.info("退院先カテゴリを選択してください")
+        return
 
     # 全施設データ取得
     all_facilities = loader.get_facility_list()
 
-    # 複数施設選択
+    # 複数施設選択：デフォルトで4施設
+    default_keywords = ["信州医療センター", "長野赤十字病院", "長野市民病院", "北信総合病院"]
+    default_facilities = [f for f in all_facilities if any(kw in f for kw in default_keywords)]
     selected_facilities = st.multiselect(
         "比較する施設を選択（複数可）",
         all_facilities,
-        default=all_facilities  # デフォルトで全施設
+        default=default_facilities
     )
 
     if not selected_facilities:
