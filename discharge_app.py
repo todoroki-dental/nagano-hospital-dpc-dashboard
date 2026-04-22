@@ -67,6 +67,12 @@ def fmt_value(value, config: dict) -> str:
     return f"{value:.1%}"
 
 
+def build_destination_color_map(destinations: list) -> dict:
+    """退院先ごとの固定カラーマップを生成する"""
+    palette = px.colors.qualitative.D3  # 10色
+    return {dest: palette[i % len(palette)] for i, dest in enumerate(destinations)}
+
+
 def render_sidebar(loader):
     """サイドバーUIのレンダリング"""
     st.sidebar.title("🏥 退院先分析")
@@ -133,7 +139,8 @@ def render_sidebar(loader):
         "compare_year1": compare_year1,
         "compare_year2": compare_year2,
         "destinations": selected_destinations if selected_destinations else loader.destinations,
-        "display_mode": display_mode
+        "display_mode": display_mode,
+        "color_map": build_destination_color_map(loader.destinations)
     }
 
 
@@ -219,6 +226,7 @@ def render_facility_analysis(loader, config):
             barmode='stack',
             facet_col=facet_col,
             facet_col_wrap=facet_col_wrap,
+            color_discrete_map=config["color_map"],
             title="退院先構成推移（スタック）",
             height=500 if len(facilities) <= 2 else 800
         )
@@ -250,6 +258,7 @@ def render_facility_analysis(loader, config):
                 color='退院先',
                 markers=True,
                 text=value_col,
+                color_discrete_map=config["color_map"],
                 title=f"退院先別推移（合算：{'・'.join(selected_multi)}）"
             )
             if value_col == '推定患者数':
@@ -275,6 +284,7 @@ def render_facility_analysis(loader, config):
                 y=value_col,
                 color='退院先',
                 markers=True,
+                color_discrete_map=config["color_map"],
                 title=f"{facilities[0]} - 退院先推移"
             )
         else:
@@ -335,6 +345,8 @@ def render_facility_analysis(loader, config):
                 facility_year_data,
                 values='割合',
                 names='退院先',
+                color='退院先',
+                color_discrete_map=config["color_map"],
                 title="退院先内訳",
                 hole=0.4
             )
