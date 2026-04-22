@@ -227,6 +227,30 @@ def render_facility_analysis(loader, config):
         fig_stack.update_layout(hovermode='x unified', legend=dict(traceorder='reversed'))
         st.plotly_chart(fig_stack, use_container_width=True)
 
+        # 退院先ごとの施設間比較折れ線グラフ
+        st.markdown("#### 📈 退院先別・施設間比較推移")
+        for dest in config["destinations"]:
+            dest_data = all_data[all_data['退院先'] == dest]
+            if not dest_data.empty:
+                fig = px.line(
+                    dest_data,
+                    x='年度',
+                    y=value_col,
+                    color='施設名',
+                    markers=True,
+                    text=value_col,
+                    title=f"{dest}"
+                )
+                if value_col == '推定患者数':
+                    fig.update_traces(texttemplate="%{text:,.0f}", textposition="top center",
+                                      textfont=dict(size=10))
+                else:
+                    fig.update_traces(texttemplate="%{text:.1%}", textposition="top center",
+                                      textfont=dict(size=10))
+                fig.update_yaxes(tickformat=tickfmt)
+                fig.update_layout(height=400, hovermode='x unified')
+                st.plotly_chart(fig, use_container_width=True)
+
         st.markdown("---")
 
         # 施設が1つの場合は退院先で色分け、複数の場合は施設で色分け
