@@ -187,8 +187,15 @@ def render_facility_analysis(loader, config):
                         y=value_col,
                         color='施設名',
                         markers=True,
+                        text=value_col,
                         title=f"{dest} - 施設間比較推移"
                     )
+                    if value_col == '推定患者数':
+                        fig.update_traces(texttemplate="%{text:,.0f}", textposition="top center",
+                                          textfont=dict(size=10))
+                    else:
+                        fig.update_traces(texttemplate="%{text:.1%}", textposition="top center",
+                                          textfont=dict(size=10))
                     fig.update_yaxes(tickformat=tickfmt)
                     fig.update_layout(height=400, hovermode='x unified')
                     st.plotly_chart(fig, use_container_width=True)
