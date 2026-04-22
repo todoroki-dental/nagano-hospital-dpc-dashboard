@@ -227,29 +227,33 @@ def render_facility_analysis(loader, config):
         fig_stack.update_layout(hovermode='x unified', legend=dict(traceorder='reversed'))
         st.plotly_chart(fig_stack, use_container_width=True)
 
-        # 退院先ごとの施設間比較折れ線グラフ
-        st.markdown("#### 📈 退院先別・施設間比較推移")
-        for dest in config["destinations"]:
-            dest_data = all_data[all_data['退院先'] == dest]
-            if not dest_data.empty:
-                fig = px.line(
-                    dest_data,
-                    x='年度',
-                    y=value_col,
-                    color='施設名',
-                    markers=True,
-                    text=value_col,
-                    title=f"{dest}"
-                )
-                if value_col == '推定患者数':
-                    fig.update_traces(texttemplate="%{text:,.0f}", textposition="top center",
+        # 施設を1つ選んで退院先推移を1グラフ表示
+        st.markdown("#### 📈 退院先別推移（施設選択）")
+        selected_one = st.selectbox(
+            "施設を選択",
+            facilities,
+            key="dest_trend_facility"
+        )
+        one_fac_data = all_data[all_data['施設名'] == selected_one]
+        if not one_fac_data.empty:
+            fig_one = px.line(
+                one_fac_data,
+                x='年度',
+                y=value_col,
+                color='退院先',
+                markers=True,
+                text=value_col,
+                title=f"{selected_one} - 退院先別推移"
+            )
+            if value_col == '推定患者数':
+                fig_one.update_traces(texttemplate="%{text:,.0f}", textposition="top center",
                                       textfont=dict(size=10))
-                else:
-                    fig.update_traces(texttemplate="%{text:.1%}", textposition="top center",
+            else:
+                fig_one.update_traces(texttemplate="%{text:.1%}", textposition="top center",
                                       textfont=dict(size=10))
-                fig.update_yaxes(tickformat=tickfmt)
-                fig.update_layout(height=400, hovermode='x unified')
-                st.plotly_chart(fig, use_container_width=True)
+            fig_one.update_yaxes(tickformat=tickfmt)
+            fig_one.update_layout(height=500, hovermode='x unified')
+            st.plotly_chart(fig_one, use_container_width=True)
 
         st.markdown("---")
 
