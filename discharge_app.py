@@ -224,7 +224,7 @@ def render_facility_analysis(loader, config):
         )
         fig_stack.update_yaxes(tickformat=tickfmt)
         fig_stack.update_xaxes(showticklabels=True)
-        fig_stack.update_layout(hovermode='x unified')
+        fig_stack.update_layout(hovermode='x unified', legend=dict(traceorder='reversed'))
         st.plotly_chart(fig_stack, use_container_width=True)
 
         st.markdown("---")
