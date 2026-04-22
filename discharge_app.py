@@ -163,24 +163,49 @@ def render_facility_analysis(loader, config):
     if trend_data_list:
         all_data = pd.concat(trend_data_list)
 
-        # スタック棒グラフ（退院先の構成を一覧表示）
-        st.markdown("#### 📊 退院先構成（スタック）")
-        facet_col = '施設名' if len(facilities) > 1 else None
-        facet_col_wrap = min(len(facilities), 2) if len(facilities) > 1 else None
-        fig_stack = px.bar(
-            all_data,
-            x='年度',
-            y=value_col,
-            color='退院先',
-            barmode='stack',
-            facet_col=facet_col,
-            facet_col_wrap=facet_col_wrap,
-            title="退院先構成推移（スタック）",
-            height=500 if len(facilities) <= 2 else 800
+        # 選択退院先の合計折れ線グラフ（施設ごとに1本）
+        st.markdown("#### 📈 退院先合計推移")
+        fig_total = go.Figure()
+
+        # 施設ごとに合計値の線を追加
+        for facility in facilities:
+            fac_data = all_data[all_data['施設名'] == facility]
+            total = fac_data.groupby('年度', sort=False)[value_col].sum().reset_index()
+            # 年度順にソート
+            total = total.set_index('年度').reindex(selected_years).reset_index()
+            if value_col == '推定患者数':
+                text_vals = total[value_col].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "")
+            else:
+                text_vals = total[value_col].apply(lambda x: f"{x:.1%}" if pd.notna(x) else "")
+            fig_total.add_trace(go.Scatter(
+                x=total['年度'],
+                y=total[value_col],
+                name=facility,
+                mode='lines+markers+text',
+                text=text_vals,
+                textposition='top center',
+                textfont=dict(size=10),
+                legendgroup='facilities'
+            ))
+
+        # 凡例に集計対象の退院先をダミー表示
+        for dest in config["destinations"]:
+            fig_total.add_trace(go.Scatter(
+                x=[None], y=[None],
+                name=dest,
+                mode='lines',
+                line=dict(width=0),
+                showlegend=True,
+                legendgroup='destinations'
+            ))
+
+        fig_total.update_yaxes(tickformat=tickfmt)
+        fig_total.update_layout(
+            height=450,
+            hovermode='x unified',
+            legend=dict(title="施設 / 集計退院先")
         )
-        fig_stack.update_yaxes(tickformat=tickfmt)
-        fig_stack.update_layout(hovermode='x unified')
-        st.plotly_chart(fig_stack, use_container_width=True)
+        st.plotly_chart(fig_total, use_container_width=True)
 
         st.markdown("---")
 
