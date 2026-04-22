@@ -227,33 +227,42 @@ def render_facility_analysis(loader, config):
         fig_stack.update_layout(hovermode='x unified', legend=dict(traceorder='reversed'))
         st.plotly_chart(fig_stack, use_container_width=True)
 
-        # 施設を1つ選んで退院先推移を1グラフ表示
-        st.markdown("#### 📈 退院先別推移（施設選択）")
-        selected_one = st.selectbox(
-            "施設を選択",
+        # 複数施設を合算した退院先別推移
+        st.markdown("#### 📈 退院先別推移（施設合算）")
+        selected_multi = st.multiselect(
+            "合算する施設を選択（複数可）",
             facilities,
-            key="dest_trend_facility"
+            default=facilities,
+            key="dest_trend_multi_facility"
         )
-        one_fac_data = all_data[all_data['施設名'] == selected_one]
-        if not one_fac_data.empty:
-            fig_one = px.line(
-                one_fac_data,
+        if selected_multi:
+            multi_data = all_data[all_data['施設名'].isin(selected_multi)]
+            # 施設を合算：年度×退院先 でグループ化して合計
+            agg_data = multi_data.groupby(['年度', '退院先'], sort=False)[value_col].sum().reset_index()
+            # 年度を選択順に並べ直す
+            agg_data['年度'] = pd.Categorical(agg_data['年度'], categories=selected_years, ordered=True)
+            agg_data = agg_data.sort_values('年度')
+
+            fig_agg = px.line(
+                agg_data,
                 x='年度',
                 y=value_col,
                 color='退院先',
                 markers=True,
                 text=value_col,
-                title=f"{selected_one} - 退院先別推移"
+                title=f"退院先別推移（合算：{'・'.join(selected_multi)}）"
             )
             if value_col == '推定患者数':
-                fig_one.update_traces(texttemplate="%{text:,.0f}", textposition="top center",
+                fig_agg.update_traces(texttemplate="%{text:,.0f}", textposition="top center",
                                       textfont=dict(size=10))
             else:
-                fig_one.update_traces(texttemplate="%{text:.1%}", textposition="top center",
+                fig_agg.update_traces(texttemplate="%{text:.1%}", textposition="top center",
                                       textfont=dict(size=10))
-            fig_one.update_yaxes(tickformat=tickfmt)
-            fig_one.update_layout(height=500, hovermode='x unified')
-            st.plotly_chart(fig_one, use_container_width=True)
+            fig_agg.update_yaxes(tickformat=tickfmt)
+            fig_agg.update_layout(height=500, hovermode='x unified')
+            st.plotly_chart(fig_agg, use_container_width=True)
+        else:
+            st.info("施設を1つ以上選択してください")
 
         st.markdown("---")
 
