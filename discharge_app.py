@@ -163,6 +163,27 @@ def render_facility_analysis(loader, config):
     if trend_data_list:
         all_data = pd.concat(trend_data_list)
 
+        # スタック棒グラフ（退院先の構成を一覧表示）
+        st.markdown("#### 📊 退院先構成（スタック）")
+        facet_col = '施設名' if len(facilities) > 1 else None
+        facet_col_wrap = min(len(facilities), 2) if len(facilities) > 1 else None
+        fig_stack = px.bar(
+            all_data,
+            x='年度',
+            y=value_col,
+            color='退院先',
+            barmode='stack',
+            facet_col=facet_col,
+            facet_col_wrap=facet_col_wrap,
+            title="退院先構成推移（スタック）",
+            height=500 if len(facilities) <= 2 else 800
+        )
+        fig_stack.update_yaxes(tickformat=tickfmt)
+        fig_stack.update_layout(hovermode='x unified')
+        st.plotly_chart(fig_stack, use_container_width=True)
+
+        st.markdown("---")
+
         # 施設が1つの場合は退院先で色分け、複数の場合は施設で色分け
         if len(facilities) == 1:
             # 単一施設：退院先で色分け
