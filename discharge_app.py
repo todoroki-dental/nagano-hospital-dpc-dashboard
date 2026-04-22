@@ -223,6 +223,7 @@ def render_facility_analysis(loader, config):
             height=500 if len(facilities) <= 2 else 800
         )
         fig_stack.update_yaxes(tickformat=tickfmt)
+        fig_stack.update_xaxes(showticklabels=True)
         fig_stack.update_layout(hovermode='x unified')
         st.plotly_chart(fig_stack, use_container_width=True)
 
