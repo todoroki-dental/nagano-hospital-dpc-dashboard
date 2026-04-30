@@ -736,6 +736,208 @@ def render_data_table(loader, config):
     )
 
 
+def render_category_comparison(loader, config):
+    """タブ5: 退院先カテゴリ比較分析"""
+    st.markdown('<div class="sub-header">📊 退院先カテゴリ比較分析</div>', unsafe_allow_html=True)
+    st.markdown("退院先を意味のあるグループにまとめて年度推移を比較します。")
+
+    ALL_DESTS = loader.destinations
+
+    # デフォルトグループ定義
+    DEFAULT_GROUPS = [
+        {
+            "name": "家庭への退院",
+            "dests": [
+                '家庭への退院（当院に通院）',
+                '家庭への退院（他院への通院）',
+                '家庭への退院（その他）',
+            ],
+            "color": "#27ae60",
+        },
+        {
+            "name": "介護施設系",
+            "dests": [
+                '介護老人保健施設に入所',
+                '介護老人福祉施設に入所',
+                '社会福祉施設、有料老人ホーム等に入所',
+                '介護医療院',
+            ],
+            "color": "#2980b9",
+        },
+        {
+            "name": "その他医療機関・診療所",
+            "dests": ['他の病院・診療所への転院'],
+            "color": "#e67e22",
+        },
+        {
+            "name": "その他・終了",
+            "dests": ['その他', '終了（死亡等）'],
+            "color": "#c0392b",
+        },
+    ]
+
+    # 施設・年度の選択（このタブ専用）
+    ctrl_col1, ctrl_col2 = st.columns(2)
+    with ctrl_col1:
+        all_facilities = loader.get_facility_list()
+        default_facs = config["facilities"] or [
+            f for f in all_facilities
+            if any(kw in f for kw in ["信州医療センター", "長野赤十字病院", "長野市民病院", "北信総合病院"])
+        ]
+        selected_facilities = st.multiselect(
+            "🏥 医療機関（複数可）",
+            all_facilities,
+            default=default_facs,
+            key="cat_fac",
+        )
+    with ctrl_col2:
+        selected_years = st.multiselect(
+            "📅 年度（複数可）",
+            loader.years,
+            default=config["years"] or loader.years,
+            key="cat_yr",
+        )
+
+    if not selected_facilities or not selected_years:
+        st.warning("医療機関と年度を少なくとも1つ選択してください")
+        return
+
+    value_col = get_value_col(config)
+    tickfmt = get_tickformat(config)
+
+    # カテゴリグループのカスタマイズ
+    with st.expander("⚙️ カテゴリグループのカスタマイズ", expanded=False):
+        st.markdown("グループ名・含める退院先・色を変更できます。")
+        exp_cols = st.columns(len(DEFAULT_GROUPS))
+        groups_config = []
+        for i, grp in enumerate(DEFAULT_GROUPS):
+            with exp_cols[i]:
+                grp_name = st.text_input("グループ名", value=grp["name"], key=f"grp_name_{i}")
+                grp_dests = st.multiselect(
+                    "含める退院先",
+                    ALL_DESTS,
+                    default=[d for d in grp["dests"] if d in ALL_DESTS],
+                    key=f"grp_dests_{i}",
+                )
+                grp_color = st.color_picker("色", value=grp["color"], key=f"grp_color_{i}")
+                if grp_dests:
+                    groups_config.append({"name": grp_name, "dests": grp_dests, "color": grp_color})
+
+    if not groups_config:
+        groups_config = DEFAULT_GROUPS
+
+    color_map = {g["name"]: g["color"] for g in groups_config}
+    group_order = [g["name"] for g in groups_config]
+
+    # グループ別に集計
+    all_rows = []
+    for facility in selected_facilities:
+        fac_data = loader.get_facility_data(facility)
+        fac_data = fac_data[fac_data['年度'].isin(selected_years)]
+        for grp in groups_config:
+            summed = (
+                fac_data[fac_data['退院先'].isin(grp["dests"])]
+                .groupby('年度', sort=False)[value_col]
+                .sum()
+                .reset_index()
+            )
+            summed['施設名'] = facility
+            summed['グループ'] = grp["name"]
+            all_rows.append(summed)
+
+    if not all_rows:
+        st.info("表示するデータがありません")
+        return
+
+    agg_df = pd.concat(all_rows, ignore_index=True)
+    agg_df['年度'] = pd.Categorical(agg_df['年度'], categories=selected_years, ordered=True)
+    agg_df['グループ'] = pd.Categorical(agg_df['グループ'], categories=group_order, ordered=True)
+    agg_df = agg_df.sort_values(['施設名', 'グループ', '年度'])
+
+    # レイアウト計算
+    n_fac = len(selected_facilities)
+    facet_wrap = min(n_fac, 2)
+    n_rows = (n_fac + 1) // 2
+    chart_height = max(450, 350 + (n_rows - 1) * 280)
+    use_facet = n_fac > 1
+
+    # 折れ線グラフ
+    st.markdown("#### 📈 年度別推移（折れ線グラフ）")
+    fig_line = px.line(
+        agg_df,
+        x='年度',
+        y=value_col,
+        color='グループ',
+        facet_col='施設名' if use_facet else None,
+        facet_col_wrap=facet_wrap if use_facet else None,
+        markers=True,
+        color_discrete_map=color_map,
+        category_orders={"グループ": group_order, "施設名": selected_facilities},
+        title="退院先カテゴリ別年度推移",
+    )
+    if value_col == '推定患者数':
+        fig_line.update_traces(texttemplate="%{y:,.0f}", textposition="top center", textfont=dict(size=9))
+    else:
+        fig_line.update_traces(texttemplate="%{y:.1%}", textposition="top center", textfont=dict(size=9))
+    fig_line.update_yaxes(tickformat=tickfmt)
+    fig_line.update_layout(height=chart_height, hovermode='x unified')
+    st.plotly_chart(fig_line, use_container_width=True)
+
+    # スタック棒グラフ
+    st.markdown("#### 📊 年度別構成（スタック棒グラフ）")
+    fig_bar = px.bar(
+        agg_df,
+        x='年度',
+        y=value_col,
+        color='グループ',
+        barmode='stack',
+        facet_col='施設名' if use_facet else None,
+        facet_col_wrap=facet_wrap if use_facet else None,
+        color_discrete_map=color_map,
+        category_orders={"グループ": group_order, "施設名": selected_facilities},
+        title="退院先カテゴリ別構成推移（スタック）",
+    )
+    fig_bar.update_yaxes(tickformat=tickfmt)
+    fig_bar.update_xaxes(showticklabels=True)
+    fig_bar.update_layout(
+        height=chart_height,
+        hovermode='x unified',
+        legend=dict(traceorder='normal'),
+    )
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+    # 施設横断グループ比較（複数施設時のみ）
+    if use_facet:
+        st.markdown("#### 🔍 グループ別・施設間比較（折れ線）")
+        st.markdown("各グループを独立したグラフで施設間比較します。")
+        n_groups = len(groups_config)
+        grp_cols = st.columns(min(n_groups, 2))
+        for gi, grp in enumerate(groups_config):
+            grp_df = agg_df[agg_df['グループ'] == grp["name"]]
+            with grp_cols[gi % 2]:
+                fig_g = px.line(
+                    grp_df,
+                    x='年度',
+                    y=value_col,
+                    color='施設名',
+                    markers=True,
+                    title=grp["name"],
+                    category_orders={"施設名": selected_facilities},
+                )
+                fig_g.update_yaxes(tickformat=tickfmt)
+                fig_g.update_layout(height=350, hovermode='x unified', showlegend=True)
+                st.plotly_chart(fig_g, use_container_width=True)
+
+    # 集計データテーブル
+    with st.expander("📋 集計データを表示"):
+        display_df = agg_df[['施設名', '年度', 'グループ', value_col]].copy()
+        if value_col == '割合':
+            display_df[value_col] = display_df[value_col].apply(lambda x: f"{x:.2%}")
+        else:
+            display_df[value_col] = display_df[value_col].apply(lambda x: f"{int(x):,}")
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+
 def main():
     """メインアプリケーション"""
     # ヘッダー
@@ -772,11 +974,12 @@ def main():
     config = render_sidebar(loader)
 
     # タブ作成
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 施設別分析",
         "🔄 年度間比較",
         "🏥 施設間比較",
-        "📋 データテーブル"
+        "📋 データテーブル",
+        "📈 カテゴリ比較",
     ])
 
     with tab1:
@@ -790,6 +993,9 @@ def main():
 
     with tab4:
         render_data_table(loader, config)
+
+    with tab5:
+        render_category_comparison(loader, config)
 
 
 if __name__ == "__main__":
