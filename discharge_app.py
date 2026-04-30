@@ -906,6 +906,58 @@ def render_category_comparison(loader, config):
     )
     st.plotly_chart(fig_bar, use_container_width=True)
 
+    # 全施設合算グラフ（複数施設時のみ）
+    if use_facet:
+        st.markdown("---")
+        fac_label = "・".join(selected_facilities)
+        st.markdown(f"#### 🔢 全施設合算（{len(selected_facilities)}施設）")
+
+        combined_df = (
+            agg_df.groupby(['年度', 'グループ'], sort=False)[value_col]
+            .sum()
+            .reset_index()
+        )
+        combined_df['年度'] = pd.Categorical(combined_df['年度'], categories=selected_years, ordered=True)
+        combined_df['グループ'] = pd.Categorical(combined_df['グループ'], categories=group_order, ordered=True)
+        combined_df = combined_df.sort_values(['グループ', '年度'])
+
+        fig_comb_line = px.line(
+            combined_df,
+            x='年度',
+            y=value_col,
+            color='グループ',
+            markers=True,
+            color_discrete_map=color_map,
+            category_orders={"グループ": group_order},
+            title=f"全施設合算 - カテゴリ別年度推移（{fac_label}）",
+        )
+        if value_col == '推定患者数':
+            fig_comb_line.update_traces(texttemplate="%{y:,.0f}", textposition="top center", textfont=dict(size=9))
+        else:
+            fig_comb_line.update_traces(texttemplate="%{y:.1%}", textposition="top center", textfont=dict(size=9))
+        fig_comb_line.update_yaxes(tickformat=tickfmt)
+        fig_comb_line.update_layout(height=450, hovermode='x unified')
+        st.plotly_chart(fig_comb_line, use_container_width=True)
+
+        fig_comb_bar = px.bar(
+            combined_df,
+            x='年度',
+            y=value_col,
+            color='グループ',
+            barmode='stack',
+            color_discrete_map=color_map,
+            category_orders={"グループ": group_order},
+            title=f"全施設合算 - カテゴリ別構成推移（{fac_label}）",
+        )
+        fig_comb_bar.update_yaxes(tickformat=tickfmt)
+        fig_comb_bar.update_xaxes(showticklabels=True)
+        fig_comb_bar.update_layout(
+            height=450,
+            hovermode='x unified',
+            legend=dict(traceorder='normal'),
+        )
+        st.plotly_chart(fig_comb_bar, use_container_width=True)
+
     # 施設横断グループ比較（複数施設時のみ）
     if use_facet:
         st.markdown("#### 🔍 グループ別・施設間比較（折れ線）")
