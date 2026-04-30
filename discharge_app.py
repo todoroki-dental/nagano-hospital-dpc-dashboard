@@ -851,12 +851,19 @@ def render_category_comparison(loader, config):
                     key=f"grp_chart_{i}",
                     horizontal=True,
                 )
+                grp_yaxis = st.radio(
+                    "Y軸",
+                    ["左", "右"],
+                    key=f"grp_yaxis_{i}",
+                    horizontal=True,
+                )
                 if grp_dests:
                     groups_config.append({
                         "name": grp_name,
                         "dests": grp_dests,
                         "color": grp_color,
                         "chart_type": "bar" if grp_chart_type == "棒グラフ" else "line",
+                        "yaxis": "left" if grp_yaxis == "左" else "right",
                     })
 
     if not groups_config:
@@ -907,12 +914,20 @@ def render_category_comparison(loader, config):
     chart_height = max(450, 350 + (n_rows - 1) * 280)
     use_facet = n_fac > 1
 
-    def _add_group_traces(fig, df, grp, row=None, col=None, show_legend=True):
+    def _add_group_traces(fig, df, grp, row=None, col=None, show_legend=True, secondary_y=False):
         """1グループ分のトレース（折れ線 or 棒）をfigに追加する"""
-        from plotly.subplots import make_subplots  # noqa: F401（import確認用）
         gd = df[df['グループ'] == grp['name']].sort_values('年度')
         kw = dict(name=grp['name'], legendgroup=grp['name'], showlegend=show_legend)
-        add_kw = dict(row=row, col=col) if row is not None else {}
+        if row is None:
+            # 単一パネル：右軸はトレースのyaxisキーで指定
+            if secondary_y:
+                kw['yaxis'] = 'y2'
+            add_kw = {}
+        else:
+            # サブプロット：secondary_yをadd_traceに渡す
+            add_kw = dict(row=row, col=col)
+            if secondary_y:
+                add_kw['secondary_y'] = True
         if grp.get('chart_type', 'bar') == 'line':
             fig.add_trace(go.Scatter(
                 x=list(gd['年度']),
@@ -934,11 +949,17 @@ def render_category_comparison(loader, config):
                 **kw,
             ), **add_kw)
 
+    _has_right_axis = any(grp.get('yaxis', 'left') == 'right' for grp in groups_config)
+
     def _build_mixed_fig(df, title, height):
         """単一パネル用の混合グラフを生成する"""
         fig = go.Figure()
         for grp in groups_config:
-            _add_group_traces(fig, df, grp)
+            _add_group_traces(fig, df, grp, secondary_y=(grp.get('yaxis', 'left') == 'right'))
+        if _has_right_axis:
+            fig.update_layout(
+                yaxis2=dict(overlaying='y', side='right', tickformat=tickfmt, showgrid=False)
+            )
         fig.update_layout(barmode='stack', height=height, hovermode='x unified', title=title)
         fig.update_yaxes(tickformat=tickfmt)
         return fig
@@ -948,13 +969,21 @@ def render_category_comparison(loader, config):
         from plotly.subplots import make_subplots
         n_cols = min(n_fac, 2)
         nr = (n_fac + 1) // 2
-        fig = make_subplots(rows=nr, cols=n_cols, subplot_titles=selected_facilities, shared_xaxes=False)
+        mkw = dict(rows=nr, cols=n_cols, subplot_titles=selected_facilities, shared_xaxes=False)
+        if _has_right_axis:
+            mkw['specs'] = [[{'secondary_y': True}] * n_cols for _ in range(nr)]
+        fig = make_subplots(**mkw)
         for fi, facility in enumerate(selected_facilities):
             row = fi // n_cols + 1
             col_idx = fi % n_cols + 1
             fac_df = agg_df[agg_df['施設名'] == facility]
             for grp in groups_config:
-                _add_group_traces(fig, fac_df, grp, row=row, col=col_idx, show_legend=(fi == 0))
+                _add_group_traces(
+                    fig, fac_df, grp,
+                    row=row, col=col_idx,
+                    show_legend=(fi == 0),
+                    secondary_y=(grp.get('yaxis', 'left') == 'right'),
+                )
         fig.update_layout(barmode='stack', height=height, hovermode='x unified', title=title)
         fig.update_yaxes(tickformat=tickfmt)
         return fig
