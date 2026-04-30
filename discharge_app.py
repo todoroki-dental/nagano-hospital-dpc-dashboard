@@ -925,6 +925,8 @@ def render_category_comparison(loader, config):
     )
     st.plotly_chart(fig_bar, use_container_width=True)
 
+    combined_df = None  # 後段のダウンロード処理で参照するため事前に初期化
+
     # 全施設合算グラフ（複数施設時のみ）
     if use_facet:
         st.markdown("---")
@@ -1001,14 +1003,41 @@ def render_category_comparison(loader, config):
                 fig_g.update_layout(height=350, hovermode='x unified', showlegend=True)
                 st.plotly_chart(fig_g, use_container_width=True)
 
-    # 集計データテーブル
-    with st.expander("📋 集計データを表示"):
-        display_df = agg_df[['施設名', '年度', 'グループ', value_col]].copy()
-        if value_col == '割合':
-            display_df[value_col] = display_df[value_col].apply(lambda x: f"{x:.2%}")
-        else:
-            display_df[value_col] = display_df[value_col].apply(lambda x: f"{int(x):,}")
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+    # 集計データとダウンロード
+    st.markdown("---")
+    st.markdown("#### 📥 集計データのダウンロード")
+
+    _dl_show_cols = ['施設名', '年度', 'グループ', '割合'] + (['推定患者数'] if _has_count else [])
+    _dl_tabs = ["施設別データ"] + (["全施設合算データ"] if combined_df is not None else [])
+    dl_tab_list = st.tabs(_dl_tabs)
+
+    with dl_tab_list[0]:
+        _disp = agg_df[_dl_show_cols].copy()
+        _disp['割合'] = _disp['割合'].apply(lambda x: f"{x:.2%}")
+        st.dataframe(_disp, use_container_width=True, hide_index=True, height=300)
+        _csv1 = agg_df[_dl_show_cols].to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="📥 施設別データをCSVダウンロード",
+            data=_csv1,
+            file_name="category_by_facility.csv",
+            mime="text/csv",
+            key="dl_facility",
+        )
+
+    if combined_df is not None:
+        with dl_tab_list[1]:
+            _comb_show_cols = ['年度', 'グループ', '割合'] + (['推定患者数'] if _has_count else [])
+            _disp_c = combined_df[_comb_show_cols].copy()
+            _disp_c['割合'] = _disp_c['割合'].apply(lambda x: f"{x:.2%}")
+            st.dataframe(_disp_c, use_container_width=True, hide_index=True, height=300)
+            _csv2 = combined_df[_comb_show_cols].to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 全施設合算データをCSVダウンロード",
+                data=_csv2,
+                file_name="category_combined.csv",
+                mime="text/csv",
+                key="dl_combined",
+            )
 
 
 def main():
