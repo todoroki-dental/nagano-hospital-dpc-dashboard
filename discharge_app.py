@@ -834,10 +834,11 @@ def render_category_comparison(loader, config):
     for facility in selected_facilities:
         fac_data = loader.get_facility_data(facility)
         fac_data = fac_data[fac_data['年度'].isin(selected_years)]
+        _agg_cols = ['割合', '推定患者数'] if '推定患者数' in fac_data.columns else ['割合']
         for grp in groups_config:
             summed = (
                 fac_data[fac_data['退院先'].isin(grp["dests"])]
-                .groupby('年度', sort=False)[value_col]
+                .groupby('年度', sort=False)[_agg_cols]
                 .sum()
                 .reset_index()
             )
@@ -854,6 +855,16 @@ def render_category_comparison(loader, config):
     agg_df['グループ'] = pd.Categorical(agg_df['グループ'], categories=group_order, ordered=True)
     agg_df = agg_df.sort_values(['施設名', 'グループ', '年度'])
 
+    # 件数と割合を両方表示するラベル列を作成
+    _has_count = '推定患者数' in agg_df.columns
+
+    def _dual_label(row):
+        if _has_count and pd.notna(row['推定患者数']):
+            return f"{int(row['推定患者数']):,}件<br>({row['割合']:.1%})"
+        return f"{row['割合']:.1%}"
+
+    agg_df['表示ラベル'] = agg_df.apply(_dual_label, axis=1)
+
     # レイアウト計算
     n_fac = len(selected_facilities)
     facet_wrap = min(n_fac, 2)
@@ -868,6 +879,7 @@ def render_category_comparison(loader, config):
         x='年度',
         y=value_col,
         color='グループ',
+        text='表示ラベル',
         facet_col='施設名' if use_facet else None,
         facet_col_wrap=facet_wrap if use_facet else None,
         markers=True,
@@ -875,10 +887,7 @@ def render_category_comparison(loader, config):
         category_orders={"グループ": group_order, "施設名": selected_facilities},
         title="退院先カテゴリ別年度推移",
     )
-    if value_col == '推定患者数':
-        fig_line.update_traces(texttemplate="%{y:,.0f}", textposition="top center", textfont=dict(size=9))
-    else:
-        fig_line.update_traces(texttemplate="%{y:.1%}", textposition="top center", textfont=dict(size=9))
+    fig_line.update_traces(texttemplate="%{text}", textposition="top center", textfont=dict(size=9))
     fig_line.update_yaxes(tickformat=tickfmt)
     fig_line.update_layout(height=chart_height, hovermode='x unified')
     st.plotly_chart(fig_line, use_container_width=True)
@@ -912,29 +921,29 @@ def render_category_comparison(loader, config):
         fac_label = "・".join(selected_facilities)
         st.markdown(f"#### 🔢 全施設合算（{len(selected_facilities)}施設）")
 
+        _comb_cols = ['割合', '推定患者数'] if _has_count else ['割合']
         combined_df = (
-            agg_df.groupby(['年度', 'グループ'], sort=False)[value_col]
+            agg_df.groupby(['年度', 'グループ'], sort=False)[_comb_cols]
             .sum()
             .reset_index()
         )
         combined_df['年度'] = pd.Categorical(combined_df['年度'], categories=selected_years, ordered=True)
         combined_df['グループ'] = pd.Categorical(combined_df['グループ'], categories=group_order, ordered=True)
         combined_df = combined_df.sort_values(['グループ', '年度'])
+        combined_df['表示ラベル'] = combined_df.apply(_dual_label, axis=1)
 
         fig_comb_line = px.line(
             combined_df,
             x='年度',
             y=value_col,
             color='グループ',
+            text='表示ラベル',
             markers=True,
             color_discrete_map=color_map,
             category_orders={"グループ": group_order},
             title=f"全施設合算 - カテゴリ別年度推移（{fac_label}）",
         )
-        if value_col == '推定患者数':
-            fig_comb_line.update_traces(texttemplate="%{y:,.0f}", textposition="top center", textfont=dict(size=9))
-        else:
-            fig_comb_line.update_traces(texttemplate="%{y:.1%}", textposition="top center", textfont=dict(size=9))
+        fig_comb_line.update_traces(texttemplate="%{text}", textposition="top center", textfont=dict(size=9))
         fig_comb_line.update_yaxes(tickformat=tickfmt)
         fig_comb_line.update_layout(height=450, hovermode='x unified')
         st.plotly_chart(fig_comb_line, use_container_width=True)
@@ -972,10 +981,12 @@ def render_category_comparison(loader, config):
                     x='年度',
                     y=value_col,
                     color='施設名',
+                    text='表示ラベル',
                     markers=True,
                     title=grp["name"],
                     category_orders={"施設名": selected_facilities},
                 )
+                fig_g.update_traces(texttemplate="%{text}", textposition="top center", textfont=dict(size=9))
                 fig_g.update_yaxes(tickformat=tickfmt)
                 fig_g.update_layout(height=350, hovermode='x unified', showlegend=True)
                 st.plotly_chart(fig_g, use_container_width=True)
