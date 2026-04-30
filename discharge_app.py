@@ -774,6 +774,16 @@ def render_category_comparison(loader, config):
             "dests": ['その他', '終了（死亡等）'],
             "color": "#c0392b",
         },
+        {
+            "name": "グループ5",
+            "dests": [],
+            "color": "#8e44ad",
+        },
+        {
+            "name": "グループ6",
+            "dests": [],
+            "color": "#16a085",
+        },
     ]
 
     # 施設・年度の選択（このタブ専用）
@@ -808,10 +818,10 @@ def render_category_comparison(loader, config):
     # カテゴリグループのカスタマイズ
     with st.expander("⚙️ カテゴリグループのカスタマイズ", expanded=False):
         st.markdown("グループ名・含める退院先・色を変更できます。")
-        exp_cols = st.columns(len(DEFAULT_GROUPS))
+        exp_cols = st.columns(3)
         groups_config = []
         for i, grp in enumerate(DEFAULT_GROUPS):
-            with exp_cols[i]:
+            with exp_cols[i % 3]:
                 grp_name = st.text_input("グループ名", value=grp["name"], key=f"grp_name_{i}")
                 grp_dests = st.multiselect(
                     "含める退院先",
