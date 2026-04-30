@@ -808,9 +808,24 @@ def render_category_comparison(loader, config):
             key="cat_yr",
         )
 
+    transparent_bg = st.checkbox(
+        "📸 PNG出力時に背景を透過にする（ツールバーのカメラアイコンで有効）",
+        value=False,
+        key="cat_transparent_bg",
+    )
+
     if not selected_facilities or not selected_years:
         st.warning("医療機関と年度を少なくとも1つ選択してください")
         return
+
+    def _apply_bg(fig):
+        """透過背景モード時に paper_bgcolor / plot_bgcolor を透明に設定する"""
+        if transparent_bg:
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+            )
+        return fig
 
     value_col = get_value_col(config)
     tickfmt = get_tickformat(config)
@@ -900,7 +915,7 @@ def render_category_comparison(loader, config):
     fig_line.update_traces(texttemplate="%{text}", textposition="top center", textfont=dict(size=9))
     fig_line.update_yaxes(tickformat=tickfmt)
     fig_line.update_layout(height=chart_height, hovermode='x unified')
-    st.plotly_chart(fig_line, use_container_width=True)
+    st.plotly_chart(_apply_bg(fig_line), use_container_width=True)
 
     # スタック棒グラフ
     st.markdown("#### 📊 年度別構成（スタック棒グラフ）")
@@ -923,7 +938,7 @@ def render_category_comparison(loader, config):
         hovermode='x unified',
         legend=dict(traceorder='normal'),
     )
-    st.plotly_chart(fig_bar, use_container_width=True)
+    st.plotly_chart(_apply_bg(fig_bar), use_container_width=True)
 
     combined_df = None  # 後段のダウンロード処理で参照するため事前に初期化
 
@@ -964,7 +979,7 @@ def render_category_comparison(loader, config):
         fig_comb_line.update_traces(texttemplate="%{text}", textposition="top center", textfont=dict(size=9))
         fig_comb_line.update_yaxes(tickformat=tickfmt)
         fig_comb_line.update_layout(height=450, hovermode='x unified')
-        st.plotly_chart(fig_comb_line, use_container_width=True)
+        st.plotly_chart(_apply_bg(fig_comb_line), use_container_width=True)
 
         fig_comb_bar = px.bar(
             combined_df,
@@ -983,7 +998,7 @@ def render_category_comparison(loader, config):
             hovermode='x unified',
             legend=dict(traceorder='normal'),
         )
-        st.plotly_chart(fig_comb_bar, use_container_width=True)
+        st.plotly_chart(_apply_bg(fig_comb_bar), use_container_width=True)
 
     # 施設横断グループ比較（複数施設時のみ）
     if use_facet:
@@ -1007,7 +1022,7 @@ def render_category_comparison(loader, config):
                 fig_g.update_traces(texttemplate="%{text}", textposition="top center", textfont=dict(size=9))
                 fig_g.update_yaxes(tickformat=tickfmt)
                 fig_g.update_layout(height=350, hovermode='x unified', showlegend=True)
-                st.plotly_chart(fig_g, use_container_width=True)
+                st.plotly_chart(_apply_bg(fig_g), use_container_width=True)
 
     # 集計データとダウンロード
     st.markdown("---")
