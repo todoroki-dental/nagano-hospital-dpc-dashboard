@@ -939,6 +939,12 @@ def render_category_comparison(loader, config):
             .sum()
             .reset_index()
         )
+        # 割合を患者数ベースで再計算（施設ごとの割合を単純合算すると100%超になるため）
+        if _has_count:
+            _year_total = combined_df.groupby('年度')['推定患者数'].transform('sum')
+            combined_df['割合'] = combined_df['推定患者数'] / _year_total
+        else:
+            combined_df['割合'] = combined_df['割合'] / len(selected_facilities)
         combined_df['年度'] = pd.Categorical(combined_df['年度'], categories=selected_years, ordered=True)
         combined_df['グループ'] = pd.Categorical(combined_df['グループ'], categories=group_order, ordered=True)
         combined_df = combined_df.sort_values(['グループ', '年度'])
