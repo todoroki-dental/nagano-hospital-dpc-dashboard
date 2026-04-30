@@ -845,8 +845,19 @@ def render_category_comparison(loader, config):
                     key=f"grp_dests_{i}",
                 )
                 grp_color = st.color_picker("色", value=grp["color"], key=f"grp_color_{i}")
+                grp_chart_type = st.radio(
+                    "グラフ種類",
+                    ["棒グラフ", "折れ線"],
+                    key=f"grp_chart_{i}",
+                    horizontal=True,
+                )
                 if grp_dests:
-                    groups_config.append({"name": grp_name, "dests": grp_dests, "color": grp_color})
+                    groups_config.append({
+                        "name": grp_name,
+                        "dests": grp_dests,
+                        "color": grp_color,
+                        "chart_type": "bar" if grp_chart_type == "棒グラフ" else "line",
+                    })
 
     if not groups_config:
         groups_config = DEFAULT_GROUPS
@@ -892,53 +903,70 @@ def render_category_comparison(loader, config):
 
     # レイアウト計算
     n_fac = len(selected_facilities)
-    facet_wrap = min(n_fac, 2)
     n_rows = (n_fac + 1) // 2
     chart_height = max(450, 350 + (n_rows - 1) * 280)
     use_facet = n_fac > 1
 
-    # 折れ線グラフ
-    st.markdown("#### 📈 年度別推移（折れ線グラフ）")
-    fig_line = px.line(
-        agg_df,
-        x='年度',
-        y=value_col,
-        color='グループ',
-        text='表示ラベル',
-        facet_col='施設名' if use_facet else None,
-        facet_col_wrap=facet_wrap if use_facet else None,
-        markers=True,
-        color_discrete_map=color_map,
-        category_orders={"グループ": group_order, "施設名": selected_facilities},
-        title="退院先カテゴリ別年度推移",
-    )
-    fig_line.update_traces(texttemplate="%{text}", textposition="top center", textfont=dict(size=9))
-    fig_line.update_yaxes(tickformat=tickfmt)
-    fig_line.update_layout(height=chart_height, hovermode='x unified')
-    st.plotly_chart(_apply_bg(fig_line), use_container_width=True)
+    def _add_group_traces(fig, df, grp, row=None, col=None, show_legend=True):
+        """1グループ分のトレース（折れ線 or 棒）をfigに追加する"""
+        from plotly.subplots import make_subplots  # noqa: F401（import確認用）
+        gd = df[df['グループ'] == grp['name']].sort_values('年度')
+        kw = dict(name=grp['name'], legendgroup=grp['name'], showlegend=show_legend)
+        add_kw = dict(row=row, col=col) if row is not None else {}
+        if grp.get('chart_type', 'bar') == 'line':
+            fig.add_trace(go.Scatter(
+                x=list(gd['年度']),
+                y=list(gd[value_col]),
+                mode='lines+markers+text',
+                text=list(gd['表示ラベル']),
+                texttemplate='%{text}',
+                textposition='top center',
+                textfont=dict(size=9),
+                marker_color=grp['color'],
+                line_color=grp['color'],
+                **kw,
+            ), **add_kw)
+        else:
+            fig.add_trace(go.Bar(
+                x=list(gd['年度']),
+                y=list(gd[value_col]),
+                marker_color=grp['color'],
+                **kw,
+            ), **add_kw)
 
-    # スタック棒グラフ
-    st.markdown("#### 📊 年度別構成（スタック棒グラフ）")
-    fig_bar = px.bar(
-        agg_df,
-        x='年度',
-        y=value_col,
-        color='グループ',
-        barmode='stack',
-        facet_col='施設名' if use_facet else None,
-        facet_col_wrap=facet_wrap if use_facet else None,
-        color_discrete_map=color_map,
-        category_orders={"グループ": group_order, "施設名": selected_facilities},
-        title="退院先カテゴリ別構成推移（スタック）",
-    )
-    fig_bar.update_yaxes(tickformat=tickfmt)
-    fig_bar.update_xaxes(showticklabels=True)
-    fig_bar.update_layout(
-        height=chart_height,
-        hovermode='x unified',
-        legend=dict(traceorder='normal'),
-    )
-    st.plotly_chart(_apply_bg(fig_bar), use_container_width=True)
+    def _build_mixed_fig(df, title, height):
+        """単一パネル用の混合グラフを生成する"""
+        fig = go.Figure()
+        for grp in groups_config:
+            _add_group_traces(fig, df, grp)
+        fig.update_layout(barmode='stack', height=height, hovermode='x unified', title=title)
+        fig.update_yaxes(tickformat=tickfmt)
+        return fig
+
+    def _build_facet_mixed_fig(title, height):
+        """複数施設のサブプロット混合グラフを生成する"""
+        from plotly.subplots import make_subplots
+        n_cols = min(n_fac, 2)
+        nr = (n_fac + 1) // 2
+        fig = make_subplots(rows=nr, cols=n_cols, subplot_titles=selected_facilities, shared_xaxes=False)
+        for fi, facility in enumerate(selected_facilities):
+            row = fi // n_cols + 1
+            col_idx = fi % n_cols + 1
+            fac_df = agg_df[agg_df['施設名'] == facility]
+            for grp in groups_config:
+                _add_group_traces(fig, fac_df, grp, row=row, col=col_idx, show_legend=(fi == 0))
+        fig.update_layout(barmode='stack', height=height, hovermode='x unified', title=title)
+        fig.update_yaxes(tickformat=tickfmt)
+        return fig
+
+    # 施設別グラフ（折れ線・棒をグループ設定に従って混合表示）
+    st.markdown("#### 📊 年度別推移")
+    if use_facet:
+        fig_main = _build_facet_mixed_fig("退院先カテゴリ別年度推移", chart_height)
+    else:
+        single_df = agg_df[agg_df['施設名'] == selected_facilities[0]]
+        fig_main = _build_mixed_fig(single_df, f"{selected_facilities[0]} - 退院先カテゴリ別年度推移", chart_height)
+    st.plotly_chart(_apply_bg(fig_main), use_container_width=True)
 
     combined_df = None  # 後段のダウンロード処理で参照するため事前に初期化
 
@@ -965,40 +993,12 @@ def render_category_comparison(loader, config):
         combined_df = combined_df.sort_values(['グループ', '年度'])
         combined_df['表示ラベル'] = combined_df.apply(_dual_label, axis=1)
 
-        fig_comb_line = px.line(
+        fig_comb = _build_mixed_fig(
             combined_df,
-            x='年度',
-            y=value_col,
-            color='グループ',
-            text='表示ラベル',
-            markers=True,
-            color_discrete_map=color_map,
-            category_orders={"グループ": group_order},
-            title=f"全施設合算 - カテゴリ別年度推移（{fac_label}）",
+            f"全施設合算 - カテゴリ別年度推移（{fac_label}）",
+            450,
         )
-        fig_comb_line.update_traces(texttemplate="%{text}", textposition="top center", textfont=dict(size=9))
-        fig_comb_line.update_yaxes(tickformat=tickfmt)
-        fig_comb_line.update_layout(height=450, hovermode='x unified')
-        st.plotly_chart(_apply_bg(fig_comb_line), use_container_width=True)
-
-        fig_comb_bar = px.bar(
-            combined_df,
-            x='年度',
-            y=value_col,
-            color='グループ',
-            barmode='stack',
-            color_discrete_map=color_map,
-            category_orders={"グループ": group_order},
-            title=f"全施設合算 - カテゴリ別構成推移（{fac_label}）",
-        )
-        fig_comb_bar.update_yaxes(tickformat=tickfmt)
-        fig_comb_bar.update_xaxes(showticklabels=True)
-        fig_comb_bar.update_layout(
-            height=450,
-            hovermode='x unified',
-            legend=dict(traceorder='normal'),
-        )
-        st.plotly_chart(_apply_bg(fig_comb_bar), use_container_width=True)
+        st.plotly_chart(_apply_bg(fig_comb), use_container_width=True)
 
     # 施設横断グループ比較（複数施設時のみ）
     if use_facet:
