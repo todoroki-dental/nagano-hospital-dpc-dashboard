@@ -147,6 +147,7 @@ def render_sidebar(loader):
         "75歳以上割合": "75歳以上割合",
         "総人口": "総数",
         "65歳以上人口": "65歳以上",
+        "75歳以上人口": "うち75歳以上",
     }
     try:
         demo_df = load_demographics()
@@ -164,7 +165,7 @@ def render_sidebar(loader):
             key="demo_metrics",
         )
         _ratio_set = {"65歳以上割合", "75歳以上割合"}
-        _count_set = {"総人口", "65歳以上人口"}
+        _count_set = {"総人口", "65歳以上人口", "75歳以上人口"}
         if any(m in _ratio_set for m in demo_metrics) and any(m in _count_set for m in demo_metrics):
             st.sidebar.warning("割合系と人数系の同時表示はスケールが合いません")
     except Exception:
