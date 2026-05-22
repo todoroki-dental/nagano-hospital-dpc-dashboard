@@ -954,6 +954,7 @@ def render_category_comparison(loader, config):
                 grp_chart_type = st.radio(
                     "グラフ種類",
                     ["棒グラフ", "折れ線"],
+                    index=1,
                     key=f"grp_chart_{i}",
                     horizontal=True,
                 )
@@ -1034,7 +1035,7 @@ def render_category_comparison(loader, config):
             add_kw = dict(row=row, col=col)
             if secondary_y:
                 add_kw['secondary_y'] = True
-        if grp.get('chart_type', 'bar') == 'line':
+        if grp.get('chart_type', 'line') == 'line':
             fig.add_trace(go.Scatter(
                 x=list(gd['年度']),
                 y=list(gd[value_col]),
