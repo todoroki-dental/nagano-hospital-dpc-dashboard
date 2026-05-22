@@ -235,7 +235,7 @@ def render_facility_analysis(loader, config):
                 mode='lines+markers+text',
                 text=text_vals,
                 textposition='top center',
-                textfont=dict(size=10),
+                textfont=dict(size=12),
                 legendgroup='facilities'
             ))
 
@@ -307,10 +307,10 @@ def render_facility_analysis(loader, config):
             )
             if value_col == '推定患者数':
                 fig_agg.update_traces(texttemplate="%{text:,.0f}", textposition="top center",
-                                      textfont=dict(size=10))
+                                      textfont=dict(size=12))
             else:
                 fig_agg.update_traces(texttemplate="%{text:.1%}", textposition="top center",
-                                      textfont=dict(size=10))
+                                      textfont=dict(size=12))
             fig_agg.update_yaxes(tickformat=tickfmt)
             fig_agg.update_layout(height=500, hovermode='x unified')
             st.plotly_chart(fig_agg, use_container_width=True)
@@ -349,10 +349,10 @@ def render_facility_analysis(loader, config):
                     )
                     if value_col == '推定患者数':
                         fig.update_traces(texttemplate="%{text:,.0f}", textposition="top center",
-                                          textfont=dict(size=10))
+                                          textfont=dict(size=12))
                     else:
                         fig.update_traces(texttemplate="%{text:.1%}", textposition="top center",
-                                          textfont=dict(size=10))
+                                          textfont=dict(size=12))
                     fig.update_yaxes(tickformat=tickfmt)
                     fig.update_layout(height=400, hovermode='x unified')
                     st.plotly_chart(fig, use_container_width=True)
@@ -826,7 +826,7 @@ def _add_demographics_traces(
             mode='lines+markers+text',
             text=text_vals,
             textposition='bottom center',
-            textfont=dict(size=8),
+            textfont=dict(size=10),
             line=dict(color=_DEMO_COLORS[i % len(_DEMO_COLORS)], dash='dot', width=2),
             marker=dict(symbol='diamond', size=8),
             yaxis='y3',
@@ -1043,7 +1043,7 @@ def render_category_comparison(loader, config):
                 text=list(gd['表示ラベル']),
                 texttemplate='%{text}',
                 textposition='top center',
-                textfont=dict(size=9),
+                textfont=dict(size=11),
                 marker_color=grp['color'],
                 line_color=grp['color'],
                 **kw,
@@ -1167,7 +1167,7 @@ def render_category_comparison(loader, config):
                     title=grp["name"],
                     category_orders={"施設名": selected_facilities},
                 )
-                fig_g.update_traces(texttemplate="%{text}", textposition="top center", textfont=dict(size=9))
+                fig_g.update_traces(texttemplate="%{text}", textposition="top center", textfont=dict(size=11))
                 fig_g.update_yaxes(tickformat=tickfmt)
                 fig_g.update_layout(height=350, hovermode='x unified', showlegend=True)
                 st.plotly_chart(_apply_bg(fig_g), use_container_width=True)
