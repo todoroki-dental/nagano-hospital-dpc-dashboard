@@ -50,6 +50,13 @@ def load_discharge_data():
     return loader
 
 
+@st.cache_resource(ttl=3600)
+def load_demographics():
+    """人口動態データを読み込み（キャッシュ）"""
+    from discharge_data_loader import load_demographics_data
+    return load_demographics_data()
+
+
 def get_value_col(config: dict) -> str:
     """表示モードに応じた値の列名を返す"""
     return '推定患者数' if config["display_mode"] == "推定患者数（件）" else '割合'
@@ -131,6 +138,39 @@ def render_sidebar(loader):
         if st.sidebar.checkbox(dest, value=default_value, key=f"dest_{dest}"):
             selected_destinations.append(dest)
 
+    # 人口動態オーバーレイ設定
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 👥 人口動態オーバーレイ")
+    st.sidebar.markdown("カテゴリ比較タブのグラフに重ねて表示します。")
+    _DEMO_METRICS = {
+        "65歳以上割合": "65歳以上割合",
+        "75歳以上割合": "75歳以上割合",
+        "総人口": "総数",
+        "65歳以上人口": "65歳以上",
+    }
+    try:
+        demo_df = load_demographics()
+        all_cities = sorted(demo_df['市町村名'].unique().tolist())
+        demo_cities = st.sidebar.multiselect(
+            "市町村（複数選択→合算）",
+            all_cities,
+            default=[],
+            key="demo_cities",
+        )
+        demo_metrics = st.sidebar.multiselect(
+            "重ねる指標",
+            list(_DEMO_METRICS.keys()),
+            default=[],
+            key="demo_metrics",
+        )
+        _ratio_set = {"65歳以上割合", "75歳以上割合"}
+        _count_set = {"総人口", "65歳以上人口"}
+        if any(m in _ratio_set for m in demo_metrics) and any(m in _count_set for m in demo_metrics):
+            st.sidebar.warning("割合系と人数系の同時表示はスケールが合いません")
+    except Exception:
+        st.sidebar.error("人口動態データの読み込みに失敗しました")
+        demo_cities, demo_metrics = [], []
+
     return {
         "facility": selected_facility,
         "facilities": selected_facilities,
@@ -140,7 +180,10 @@ def render_sidebar(loader):
         "compare_year2": compare_year2,
         "destinations": selected_destinations if selected_destinations else loader.destinations,
         "display_mode": display_mode,
-        "color_map": build_destination_color_map(loader.destinations)
+        "color_map": build_destination_color_map(loader.destinations),
+        "demo_cities": demo_cities,
+        "demo_metrics": demo_metrics,
+        "demo_metric_cols": [_DEMO_METRICS[m] for m in demo_metrics],
     }
 
 
@@ -736,6 +779,68 @@ def render_data_table(loader, config):
     )
 
 
+_DEMO_COLORS = ["#ff7f0e", "#d62728", "#9467bd", "#8c564b"]
+
+
+def _add_demographics_traces(
+    fig: go.Figure,
+    demo_df: pd.DataFrame,
+    cities: list,
+    metric_cols: list,
+    metric_labels: list,
+    years: list,
+    has_right_axis: bool = False,
+) -> go.Figure:
+    """人口動態の折れ線を第3Y軸（y3）として fig に追加する"""
+    if not cities or not metric_cols:
+        return fig
+
+    filtered = demo_df[demo_df['市町村名'].isin(cities)]
+    agg = filtered.groupby('年度').agg(
+        総数=('総数', 'sum'),
+        **{'65歳以上': ('65歳以上', 'sum')},
+        **{'うち75歳以上': ('うち75歳以上', 'sum')},
+    ).reset_index()
+    agg['65歳以上割合'] = agg['65歳以上'] / agg['総数']
+    agg['75歳以上割合'] = agg['うち75歳以上'] / agg['総数']
+
+    common_years = [y for y in years if y in agg['年度'].values]
+    if not common_years:
+        return fig
+    agg = agg[agg['年度'].isin(common_years)]
+    agg['年度'] = pd.Categorical(agg['年度'], categories=common_years, ordered=True)
+    agg = agg.sort_values('年度')
+
+    city_label = "・".join(cities) if len(cities) <= 3 else f"{cities[0]}他{len(cities) - 1}市町村"
+    is_ratio_col = {'65歳以上割合', '75歳以上割合'}
+
+    for i, (col, label) in enumerate(zip(metric_cols, metric_labels)):
+        is_ratio = col in is_ratio_col
+        y_vals = list(agg[col])
+        text_vals = [f"{v:.1%}" if is_ratio else f"{int(v):,}" for v in y_vals]
+        fig.add_trace(go.Scatter(
+            x=list(agg['年度']),
+            y=y_vals,
+            name=f"{label}（{city_label}）",
+            mode='lines+markers+text',
+            text=text_vals,
+            textposition='bottom center',
+            textfont=dict(size=8),
+            line=dict(color=_DEMO_COLORS[i % len(_DEMO_COLORS)], dash='dot', width=2),
+            marker=dict(symbol='diamond', size=8),
+            yaxis='y3',
+            legendgroup='demographics',
+            legendgrouptitle_text='人口動態' if i == 0 else None,
+        ))
+
+    # y2軸が既にある場合は y3 を右外側にオフセット
+    yaxis3_cfg = dict(overlaying='y', side='right', showgrid=False, tickformat=".1%")
+    if has_right_axis:
+        yaxis3_cfg.update(anchor='free', position=1.05)
+    fig.update_layout(yaxis3=yaxis3_cfg)
+    return fig
+
+
 def render_category_comparison(loader, config):
     """タブ5: 退院先カテゴリ比較分析"""
     st.markdown('<div class="sub-header">📊 退院先カテゴリ比較分析</div>', unsafe_allow_html=True)
@@ -995,6 +1100,12 @@ def render_category_comparison(loader, config):
     else:
         single_df = agg_df[agg_df['施設名'] == selected_facilities[0]]
         fig_main = _build_mixed_fig(single_df, f"{selected_facilities[0]} - 退院先カテゴリ別年度推移", chart_height)
+        if config.get("demo_cities") and config.get("demo_metric_cols"):
+            fig_main = _add_demographics_traces(
+                fig_main, load_demographics(),
+                config["demo_cities"], config["demo_metric_cols"], config["demo_metrics"],
+                selected_years, has_right_axis=_has_right_axis,
+            )
     st.plotly_chart(_apply_bg(fig_main), use_container_width=True)
 
     combined_df = None  # 後段のダウンロード処理で参照するため事前に初期化
@@ -1027,6 +1138,12 @@ def render_category_comparison(loader, config):
             f"全施設合算 - カテゴリ別年度推移（{fac_label}）",
             450,
         )
+        if config.get("demo_cities") and config.get("demo_metric_cols"):
+            fig_comb = _add_demographics_traces(
+                fig_comb, load_demographics(),
+                config["demo_cities"], config["demo_metric_cols"], config["demo_metrics"],
+                selected_years, has_right_axis=_has_right_axis,
+            )
         st.plotly_chart(_apply_bg(fig_comb), use_container_width=True)
 
     # 施設横断グループ比較（複数施設時のみ）

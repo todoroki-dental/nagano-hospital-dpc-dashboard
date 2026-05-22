@@ -193,3 +193,13 @@ class DischargeDataLoader:
         home_rate['退院先'] = '家庭への退院（合計）'
 
         return home_rate
+
+
+def load_demographics_data(file_path: str = None) -> pd.DataFrame:
+    """市町村別人口動態データを読み込み、派生指標（割合列）を付与して返す"""
+    script_dir = Path(__file__).parent
+    path = Path(file_path) if file_path else script_dir / "data/医療圏人口動態R2-R7.xlsx"
+    df = pd.read_excel(path, sheet_name='Sheet9')
+    df['65歳以上割合'] = df['65歳以上'] / df['総数']
+    df['75歳以上割合'] = df['うち75歳以上'] / df['総数']
+    return df
