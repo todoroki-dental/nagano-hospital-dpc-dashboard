@@ -23,7 +23,7 @@ streamlit run discharge_app.py
 ```
 data/ent_nagano.xlsx          → DischargeDataLoader → processed_data（長形式DataFrame）
 data/length_of_stay.xlsx      →   （推定患者数の計算に使用）
-data/医療圏人口動態R2-R7.xlsx → load_demographics_data() → 人口動態DataFrame
+data/医療圏人口動態R1-R7.xlsx → load_demographics_data() → 人口動態DataFrame
 ```
 
 **`ent_nagano.xlsx` の構造**：シート「退院先」、2段ヘッダー `(年度, 退院先)` のワイドフォーマット。`DischargeDataLoader.process_data()` で施設×年度×退院先の長形式に変換する。
@@ -67,7 +67,7 @@ git push origin main
 
 - 新しい年度データを `ent_nagano.xlsx` に追加した場合、`DischargeDataLoader.load_los_data()` 内の年度リスト（`['r1', 'r2', ...]`）も更新が必要
 - 退院先カテゴリが変わった場合、`render_sidebar()` 内の `excluded_defaults` と `render_category_comparison()` の `DEFAULT_GROUPS` を確認する
-- 人口動態データは `data/医療圏人口動態R2-R7.xlsx`（Sheet9）。列名が変わると `load_demographics_data()` が壊れる
+- 人口動態データは `data/医療圏人口動態R1-R7.xlsx`（Sheet9）。列名が変わると `load_demographics_data()` が壊れる
 
 ## 施設と医療圏の対応（コード内に定義なし）
 
